@@ -1,0 +1,92 @@
+!wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
+!chmod +x cuda_11.8.0_520.61.05_linux.run
+!sudo sh cuda_11.8.0_520.61.05_linux.run --silent --toolkit
+
+
+______________________________________________________________________________________________________________________
+
+
+import os
+os.environ['PATH'] = '/usr/local/cuda-11.8/bin:' + os.environ['PATH']
+os.environ['LD_LIBRARY_PATH'] = '/usr/local/cuda-11.8/lib64:' + os.environ.get('LD_LIBRARY_PATH', '')
+
+
+_______________________________________________________________________________________________________________________
+
+%%writefile vector_add.cu
+#include <iostream>
+using namespace std;
+
+__global__ void add(int* A, int* B, int* C, int size) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        C[tid] = A[tid] + B[tid];
+    }
+}
+
+void initialize(int* vector, int size) {
+    for (int i = 0; i < size; i++) {
+        vector[i] = rand() % 10;
+    }
+}
+
+void print(int* vector, int size) {
+    for (int i = 0; i < size; i++) {
+        cout << vector[i] << " ";
+    }
+    cout << endl;
+}
+
+int main() {
+    int N = 4;
+    int* A = new int[N];
+    int* B = new int[N];
+    int* C = new int[N];
+
+    size_t bytes = N * sizeof(int);
+
+    initialize(A, N);
+    initialize(B, N);
+
+    cout << "Vector A: ";
+    print(A, N);
+    cout << "Vector B: ";
+    print(B, N);
+
+    int *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, bytes);
+    cudaMalloc(&d_B, bytes);
+    cudaMalloc(&d_C, bytes);
+
+    cudaMemcpy(d_A, A, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, bytes, cudaMemcpyHostToDevice);
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+
+    add<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, N);
+
+    cudaMemcpy(C, d_C, bytes, cudaMemcpyDeviceToHost);
+
+    cout << "Result (A + B): ";
+    print(C, N);
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    return 0;
+}
+
+
+______________________________________________________________________________________________________________________
+
+!nvcc vector_add.cu -o vector_add
+!./vector_add
+
+_________________________________________
+

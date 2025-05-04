@@ -1,0 +1,102 @@
+!wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
+!chmod +x cuda_11.8.0_520.61.05_linux.run
+!sudo sh cuda_11.8.0_520.61.05_linux.run --silent --toolkit
+
+_______________________________________________________________________________________________________________________
+
+import os
+os.environ['PATH'] = '/usr/local/cuda-11.8/bin:' + os.environ['PATH']
+os.environ['LD_LIBRARY_PATH'] = '/usr/local/cuda-11.8/lib64:' + os.environ.get('LD_LIBRARY_PATH', '')
+
+________________________________________________________________________________________________________________________
+
+%%writefile matrix_multiply.cu
+#include <iostream>
+using namespace std;
+
+// CUDA kernel to multiply matrices
+__global__ void multiply(int* A, int* B, int* C, int size) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size && col < size) {
+        int sum = 0;
+        for (int i = 0; i < size; i++) {
+            sum += A[row * size + i] * B[i * size + col];
+        }
+        C[row * size + col] = sum;
+    }
+}
+
+void initialize(int* matrix, int size) {
+    for (int i = 0; i < size * size; i++) {
+        matrix[i] = rand() % 10;
+    }
+}
+
+void print(int* matrix, int size) {
+    for (int row = 0; row < size; row++) {
+        for (int col = 0; col < size; col++) {
+            cout << matrix[row * size + col] << " ";
+        }
+        cout << '\n';
+    }
+    cout << '\n';
+}
+
+int main() {
+    int* A, * B, * C;
+    int N = 2;
+
+    size_t matrixBytes = N * N * sizeof(int);
+    A = new int[N * N];
+    B = new int[N * N];
+    C = new int[N * N];
+
+    initialize(A, N);
+    initialize(B, N);
+
+    cout << "Matrix A: \n";
+    print(A, N);
+    cout << "Matrix B: \n";
+    print(B, N);
+
+    int *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, matrixBytes);
+    cudaMalloc(&d_B, matrixBytes);
+    cudaMalloc(&d_C, matrixBytes);
+
+    cudaMemcpy(d_A, A, matrixBytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, matrixBytes, cudaMemcpyHostToDevice);
+
+    int THREADS = 2;
+    int BLOCKS = N / THREADS;
+    dim3 threads(THREADS, THREADS);
+    dim3 blocks(BLOCKS, BLOCKS);
+
+    multiply<<<blocks, threads>>>(d_A, d_B, d_C, N);
+
+    cudaMemcpy(C, d_C, matrixBytes, cudaMemcpyDeviceToHost);
+
+    cout << "Multiplication of Matrix A and B: \n";
+    print(C, N);
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    return 0;
+}
+
+
+___________________________________________________________________________________________________________________________________
+
+
+!nvcc matrix_multiply.cu -o matrix_multiply
+!./matrix_multiply
+
+_________________________________________________
